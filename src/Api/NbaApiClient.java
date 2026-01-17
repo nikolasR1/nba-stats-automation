@@ -10,6 +10,7 @@ import java.util.Random;
 import com.google.gson.Gson;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.time.LocalDate;
 
 import core.Player;
 import core.PlayerGamePerformance;
@@ -18,9 +19,37 @@ import core.StatLine;
 
 public class NbaApiClient {
     private final String apiKey;
+    private long lastRequestTime = 0;
+    private static final long MIN_REQUEST_INTERVAL = 13000; // 13 seconds between requests
 
     public NbaApiClient(String apiKey) {
         this.apiKey = apiKey;
+    }
+
+    // Rate limit helper prevents hitting the 5 requests/minute limit
+    private void rateLimitDelay() {
+        try {
+            long currentTime = System.currentTimeMillis();
+            long timeSinceLastRequest = currentTime - lastRequestTime;
+
+            if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+                long sleepTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+                int secondsToWait = (int) (sleepTime / 1000);
+
+                System.out.print("Rate limiting: waiting " + secondsToWait + " seconds");
+
+                // Countdown display
+                for (int i = secondsToWait; i > 0; i--) {
+                    Thread.sleep(1000);
+                    System.out.print(".");
+                }
+                System.out.println(" done!");
+            }
+
+            lastRequestTime = System.currentTimeMillis();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     // Fetch a list of players
@@ -38,11 +67,13 @@ public class NbaApiClient {
 
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(url))
-                        .header("Authorization", "Bearer " + apiKey)
+                        .header("Authorization", apiKey)
                         .GET()
                         .build();
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                rateLimitDelay(); // Add delay after API call
+
                 String body = response.body();
 
                 if (!body.startsWith("{")) break;
@@ -65,10 +96,51 @@ public class NbaApiClient {
         return players;
     }
 
+    /**
+     * Fetches players from teams that have played recently (most accurate for current players)
+     */
+    public List<Player> fetchRecentPlayers(int count) {
+        // Step 1: Get recent games to identify active teams (ONE API CALL)
+        LocalDate today = LocalDate.now();
+        LocalDate startDate = today.minusDays(14);
+
+        System.out.println("Fetching games from " + startDate + " to today...");
+        List<Game> recentGames = fetchGames(100, startDate.toString());
+
+        if (recentGames.isEmpty()) {
+            System.out.println("No recent games found. Fetching all players instead.");
+            return fetchPlayers(count);
+        }
+
+        // Step 2: Get all active team IDs from recent games
+        Set<String> activeTeams = recentGames.stream()
+                .flatMap(g -> java.util.stream.Stream.of(
+                        g.getHomeTeamAbbr(),
+                        g.getVisitorTeamAbbr()
+                ))
+                .collect(Collectors.toSet());
+
+        System.out.println("Found " + activeTeams.size() + " active teams from recent games");
+
+        // Step 3: Fetch players and filter by active teams (ONE API CALL)
+        List<Player> allPlayers = fetchPlayers(count * 3);
+
+        List<Player> recentPlayers = allPlayers.stream()
+                .filter(p -> activeTeams.contains(p.getTeamAbbr()))
+                .filter(p -> p.getTeamAbbr() != null && !p.getTeamAbbr().isEmpty())
+                .limit(count)
+                .collect(Collectors.toList());
+
+        System.out.println("Filtered to " + recentPlayers.size() + " players from active teams");
+
+        return recentPlayers;
+    }
+
     // Fetch games from API
     public List<Game> fetchGames(int count) {
-        return fetchGames(count, "2026-01-01"); // or just use empty startDate
+        return fetchGames(count, "2026-01-01");
     }
+
     public List<Game> fetchGames(int count, String startDate) {
         List<Game> games = new ArrayList<>();
         try {
@@ -76,24 +148,31 @@ public class NbaApiClient {
             String url = "https://api.balldontlie.io/v1/games?per_page=" + count + "&start_date=" + startDate;
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Authorization", apiKey)
                     .GET()
                     .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            rateLimitDelay(); // Add delay after API call
+
+            String body = response.body();
+
+            // Check if we got rate limited or error response
+            if (!body.startsWith("{")) {
+                System.out.println("API Error: " + body);
+                return games;
+            }
+
             Gson gson = new Gson();
-            GameApiWrapper wrapper = gson.fromJson(response.body(), GameApiWrapper.class);
+            GameApiWrapper wrapper = gson.fromJson(body, GameApiWrapper.class);
 
-            for (GameApi g : wrapper.data) {
-                String homeAbbr = g.home_team.abbreviation;
-                String visitorAbbr = g.visitor_team.abbreviation;
+            if (wrapper != null && wrapper.data != null) {
+                for (GameApi g : wrapper.data) {
+                    String homeAbbr = g.home_team.abbreviation;
+                    String visitorAbbr = g.visitor_team.abbreviation;
 
-                boolean isHome = true;
-                String opponent = isHome ? visitorAbbr : homeAbbr;
-
-                games.add(new Game(opponent + " @ " + (isHome ? homeAbbr : visitorAbbr),
-                        g.date,
-                        isHome));
+                    games.add(new Game(homeAbbr, visitorAbbr, g.date));
+                }
             }
 
         } catch (Exception e) {
@@ -145,17 +224,19 @@ public class NbaApiClient {
 
         return list;
     }
+
     public List<Player> filterCurrentPlayers(List<Player> players, List<Game> recentGames) {
         // Collect all team abbreviations in recent games
         Set<String> activeTeams = recentGames.stream()
                 .flatMap(g -> java.util.stream.Stream.of(
-                        g.getOpponent().split(" @ ")[0],
-                        g.getOpponent().split(" @ ")[1]))
+                        g.getHomeTeamAbbr(),
+                        g.getVisitorTeamAbbr()
+                ))
                 .collect(Collectors.toSet());
 
-        // Filter players who are on active teams
         return players.stream()
                 .filter(p -> activeTeams.contains(p.getTeamAbbr()))
+                .filter(p -> p.getTeamAbbr() != null && !p.getTeamAbbr().isEmpty())
                 .collect(Collectors.toList());
     }
 
