@@ -63,61 +63,6 @@ public class NbaApiClient {
         return players;
     }
 
-    // Fetch a single player by ID
-    public Player fetchPlayerById(int playerId) {
-        try {
-            HttpClient client = HttpClient.newHttpClient();
-            Gson gson = new Gson();
-            String url = "https://api.balldontlie.io/v1/players/" + playerId;
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .header("Authorization", "Bearer " + apiKey)
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            String body = response.body();
-
-            if (!body.startsWith("{")) {
-                System.out.println("API returned non-JSON: " + body);
-                return null;
-            }
-
-            // Deserialize directly to PlayerSingleApi
-            PlayerSingleApi p = gson.fromJson(body, PlayerSingleApi.class);
-
-            if (p == null) {
-                System.out.println("Player not found!");
-                return null;
-            }
-
-            String position = (p.position != null) ? p.position : "G";
-            String teamAbbr = (p.team != null && p.team.abbreviation != null) ? p.team.abbreviation : "N/A";
-
-            return new Player(p.id, p.first_name, p.last_name, position, teamAbbr);
-
-        } catch (Exception e) {
-            System.out.println("Error fetching player by ID: " + e.getMessage());
-            return null;
-        }
-    }
-
-
-    // ------------------ Helper classes ------------------
-    private static class PlayerSingleApi {
-        int id;
-        String first_name;
-        String last_name;
-        String position;
-        Team team;
-
-        static class Team {
-            int id;
-            String abbreviation;
-        }
-    }
-
     // Fetch games from API
     public List<Game> fetchGames(int count) {
         return fetchGames(count, "2026-01-01"); // or just use empty startDate
