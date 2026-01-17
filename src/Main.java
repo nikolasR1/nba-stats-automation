@@ -1,6 +1,8 @@
 import java.util.List;
 import java.util.Scanner;
 
+import Api.NbaApiClient;
+import Automation.AutomatedStatsRunner;
 import core.*;
 
 public class Main {
@@ -11,7 +13,7 @@ public class Main {
 
         NbaApiClient apiClient = new NbaApiClient(apiKey);
         AutomatedStatsRunner runner = new AutomatedStatsRunner(apiClient);
-        runner.runSmallBatch();
+        runner.runAutomatedSimulation();
 
 
         // Step 1: Fetch a batch of players

@@ -1,4 +1,8 @@
+package Automation;
+
 import java.util.List;
+
+import Api.NbaApiClient;
 import core.Player;
 import core.Game;
 import core.PlayerGamePerformance;
@@ -22,7 +26,7 @@ public class AutomatedStatsRunner {
     }
 
     // Safe small batch automation
-    public void runSmallBatch() {
+    public void runAutomatedSimulation() {
         System.out.println("=== Automated Stats Runner ===");
 
         // Step 1: Fetch a small batch of players (5 players)
