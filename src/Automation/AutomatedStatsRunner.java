@@ -1,5 +1,7 @@
 package Automation;
 
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.List;
 
 import Api.NbaApiClient;
@@ -11,6 +13,7 @@ import core.StatLine;
 public class AutomatedStatsRunner {
 
     private final NbaApiClient apiClient;
+
 
     public AutomatedStatsRunner(NbaApiClient apiClient) {
         this.apiClient = apiClient;
@@ -27,6 +30,14 @@ public class AutomatedStatsRunner {
 
     // Safe small batch automation
     public void runAutomatedSimulation() {
+        FileWriter writer;
+        try {
+            writer = RunLogger.createRunFile();
+        } catch (Exception e) {
+            System.out.println("Failed to create run log");
+            return;
+        }
+
         System.out.println("=== Automated Stats Runner ===");
 
         // Step 1: Fetch a small batch of players (5 players)
@@ -48,21 +59,33 @@ public class AutomatedStatsRunner {
 
         // Step 4: Print the results
         System.out.println("\nGenerated Performances:");
-        for (PlayerGamePerformance perf : performances) {
-            Player p = perf.getPlayer();
-            Game g = perf.getGame();
-            StatLine s = perf.getStats();
+        try {
+            for (PlayerGamePerformance perf : performances) {
+                Player p = perf.getPlayer();
+                Game g = perf.getGame();
+                StatLine s = perf.getStats();
 
-            System.out.printf("%s %s | %s | %s | Date: %s | PTS: %d, REB: %d, AST: %d, MIN: %.1f%n",
-                    p.getFirstName(),
-                    p.getLastName(),
-                    g.getOpponent(),
-                    g.getisHomeOrAway() ? "Home" : "Away",
-                    g.getDate(),
-                    s.getPoints(),
-                    s.getRebounds(),
-                    s.getAssists(),
-                    s.getMinutes());
+                String line = String.format(
+                        "%s %s | %s | %s | Date: %s | PTS: %d, REB: %d, AST: %d, MIN: %.1f%n",
+                        p.getFirstName(),
+                        p.getLastName(),
+                        g.getOpponent(),
+                        g.getisHomeOrAway() ? "Home" : "Away",
+                        g.getDate(),
+                        s.getPoints(),
+                        s.getRebounds(),
+                        s.getAssists(),
+                        s.getMinutes()
+                );
+
+                System.out.print(line);
+                writer.write(line);
+            }
+
+            writer.close();
+
+        } catch (IOException e) {
+            System.out.println("Error writing run log: " + e.getMessage());
         }
     }
 }
