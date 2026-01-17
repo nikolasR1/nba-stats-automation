@@ -235,7 +235,7 @@ Sophomore, Computer Science
 University of Texas at San Antonio
 
 - GitHub: [nikolasR1](https://github.com/nikolasR1)
-- LinkedIn: [Your Name](https://www.linkedin.com/in/nikolas-romero-76a01432a/)
+- LinkedIn: [Nikolas Romero](https://www.linkedin.com/in/nikolas-romero-76a01432a/)
 - Email: nikolas.romero@my.utsa.edu
 
 ---
